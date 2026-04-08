@@ -25,6 +25,14 @@ function formatRate(bytesPerSecond: number): string {
   return `${formatBytes(bytesPerSecond)}/s`;
 }
 
+function formatAxisRate(bytesPerSecond: number): string {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '0B/s';
+  const unitIndex = Math.min(Math.floor(Math.log(bytesPerSecond) / Math.log(1024)), SIZE_UNITS.length - 1);
+  const scaled = bytesPerSecond / (1024 ** unitIndex);
+  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(digits)}${SIZE_UNITS[unitIndex]}/s`;
+}
+
 
 export default function DashboardOverview() {
     // AI Analysis states
@@ -517,7 +525,7 @@ export default function DashboardOverview() {
           </div>
           <div style={{ width: '100%', height: '120px', marginTop: 'auto' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
+              <AreaChart data={history} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorNetIn" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
@@ -536,10 +544,21 @@ export default function DashboardOverview() {
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) => formatBytes(Number(value))}
+                  width={86}
+                  tickMargin={8}
+                  tickFormatter={(value) => formatAxisRate(Number(value))}
                 />
                 <Tooltip
-                  contentStyle={{ background: 'rgba(255,255,255,0.9)' }}
+                  contentStyle={{
+                    background: 'var(--color-surface-bg)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--color-surface-border)',
+                    boxShadow: '0 10px 28px var(--color-shadow)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                  }}
+                  itemStyle={{ color: 'var(--color-text)', fontSize: '0.8rem' }}
+                  labelStyle={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}
                   formatter={(value, name) => [formatRate(Number(value ?? 0)), String(name)]}
                 />
                 <Area type="monotone" dataKey="netIn" name={t.monitor.down} stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNetIn)" isAnimationActive={false} />

@@ -26,11 +26,57 @@ function formatRate(bytesPerSecond: number): string {
 }
 
 function formatAxisRate(bytesPerSecond: number): string {
-  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '0B/s';
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '0B';
   const unitIndex = Math.min(Math.floor(Math.log(bytesPerSecond) / Math.log(1024)), SIZE_UNITS.length - 1);
   const scaled = bytesPerSecond / (1024 ** unitIndex);
-  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
-  return `${scaled.toFixed(digits)}${SIZE_UNITS[unitIndex]}/s`;
+  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 1;
+  const shortUnit = SIZE_UNITS[unitIndex].replace('KB', 'K').replace('MB', 'M').replace('GB', 'G').replace('TB', 'T');
+  return `${scaled.toFixed(digits)}${shortUnit}`;
+}
+
+interface ChartTooltipPayload {
+  color?: string;
+  name?: string;
+  value?: number | string;
+}
+
+function NetworkTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: ChartTooltipPayload[];
+  label?: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        background: 'var(--color-surface-bg)',
+        border: '1px solid var(--color-surface-border)',
+        borderRadius: '12px',
+        boxShadow: '0 12px 28px var(--color-shadow)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        overflow: 'hidden',
+        minWidth: '132px',
+      }}
+    >
+      <div style={{ padding: '0.45rem 0.6rem', fontSize: '0.73rem', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-surface-border)' }}>
+        {label}
+      </div>
+      <div style={{ padding: '0.5rem 0.6rem', display: 'grid', gap: '0.35rem' }}>
+        {payload.map((item, index) => (
+          <div key={`${item.name || 'net'}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.8rem' }}>
+            <span style={{ color: item.color || 'var(--color-text-muted)', fontWeight: 600 }}>{item.name}</span>
+            <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>{formatRate(Number(item.value || 0))}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 
@@ -525,7 +571,7 @@ export default function DashboardOverview() {
           </div>
           <div style={{ width: '100%', height: '120px', marginTop: 'auto' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+              <AreaChart data={history} margin={{ top: 10, right: 8, left: 18, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorNetIn" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
@@ -544,22 +590,13 @@ export default function DashboardOverview() {
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={86}
-                  tickMargin={8}
+                  width={74}
+                  tickMargin={10}
                   tickFormatter={(value) => formatAxisRate(Number(value))}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: 'var(--color-surface-bg)',
-                    borderRadius: '12px',
-                    border: '1px solid var(--color-surface-border)',
-                    boxShadow: '0 10px 28px var(--color-shadow)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                  }}
-                  itemStyle={{ color: 'var(--color-text)', fontSize: '0.8rem' }}
-                  labelStyle={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}
-                  formatter={(value, name) => [formatRate(Number(value ?? 0)), String(name)]}
+                  content={<NetworkTooltip />}
+                  wrapperStyle={{ outline: 'none' }}
                 />
                 <Area type="monotone" dataKey="netIn" name={t.monitor.down} stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNetIn)" isAnimationActive={false} />
                 <Area type="monotone" dataKey="netOut" name={t.monitor.up} stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorNetOut)" isAnimationActive={false} />

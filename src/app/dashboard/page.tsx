@@ -40,14 +40,18 @@ interface ChartTooltipPayload {
   value?: number | string;
 }
 
-function NetworkTooltip({
+function StyledChartTooltip({
   active,
   payload,
   label,
+  valueFormatter,
+  labelFormatter,
 }: {
   active?: boolean;
   payload?: ChartTooltipPayload[];
-  label?: string;
+  label?: string | number;
+  valueFormatter?: (value: number, name: string) => string;
+  labelFormatter?: (label: string | number | undefined) => string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -65,13 +69,25 @@ function NetworkTooltip({
       }}
     >
       <div style={{ padding: '0.45rem 0.6rem', fontSize: '0.73rem', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-surface-border)' }}>
-        {label}
+        {labelFormatter ? labelFormatter(label) : String(label ?? '')}
       </div>
       <div style={{ padding: '0.5rem 0.6rem', display: 'grid', gap: '0.35rem' }}>
         {payload.map((item, index) => (
-          <div key={`${item.name || 'net'}-${index}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.8rem' }}>
+          <div
+            key={`${item.name || 'series'}-${index}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr auto',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontSize: '0.8rem',
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: item.color || 'var(--color-text-muted)' }} />
             <span style={{ color: item.color || 'var(--color-text-muted)', fontWeight: 600 }}>{item.name}</span>
-            <span style={{ color: 'var(--color-text)', fontWeight: 600 }}>{formatRate(Number(item.value || 0))}</span>
+            <span style={{ color: 'var(--color-text)', fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+              {(valueFormatter || ((v) => String(v)))(Number(item.value || 0), String(item.name || ''))}
+            </span>
           </div>
         ))}
       </div>
@@ -515,9 +531,12 @@ export default function DashboardOverview() {
                 <XAxis dataKey="time" hide />
                 <YAxis domain={[0, 100]} stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip
-                  contentStyle={{ background: 'var(--color-surface-bg)', backdropFilter: 'blur(10px)', borderRadius: '8px', border: '1px solid var(--color-surface-border)' }}
-                  itemStyle={{ color: 'var(--color-text)' }}
-                  labelStyle={{ color: 'var(--color-text)' }}
+                  content={
+                    <StyledChartTooltip
+                      valueFormatter={(value) => `${value.toFixed(1)}%`}
+                    />
+                  }
+                  wrapperStyle={{ outline: 'none' }}
                 />
                 <Area type="monotone" dataKey="cpu" name="CPU (%)" stroke="var(--color-primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorCpu)" isAnimationActive={false} />
               </AreaChart>
@@ -548,7 +567,12 @@ export default function DashboardOverview() {
                 <XAxis dataKey="time" hide />
                 <YAxis domain={[0, 100]} stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip
-                  contentStyle={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)', borderRadius: '8px', border: '1px solid var(--color-surface-border)' }}
+                  content={
+                    <StyledChartTooltip
+                      valueFormatter={(value) => `${value.toFixed(1)}%`}
+                    />
+                  }
+                  wrapperStyle={{ outline: 'none' }}
                 />
                 <Area type="monotone" dataKey="memory" name="Memory (%)" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorMem)" isAnimationActive={false} />
               </AreaChart>
@@ -571,7 +595,7 @@ export default function DashboardOverview() {
           </div>
           <div style={{ width: '100%', height: '120px', marginTop: 'auto' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 8, left: 18, bottom: 0 }}>
+              <AreaChart data={history} margin={{ top: 10, right: 8, left: 30, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorNetIn" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
@@ -590,12 +614,17 @@ export default function DashboardOverview() {
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={74}
+                  width={92}
                   tickMargin={10}
+                  tick={{ textAnchor: 'end' }}
                   tickFormatter={(value) => formatAxisRate(Number(value))}
                 />
                 <Tooltip
-                  content={<NetworkTooltip />}
+                  content={
+                    <StyledChartTooltip
+                      valueFormatter={(value) => formatRate(value)}
+                    />
+                  }
                   wrapperStyle={{ outline: 'none' }}
                 />
                 <Area type="monotone" dataKey="netIn" name={t.monitor.down} stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNetIn)" isAnimationActive={false} />

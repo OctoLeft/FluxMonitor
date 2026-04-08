@@ -29,9 +29,28 @@ function formatAxisRate(bytesPerSecond: number): string {
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '0B';
   const unitIndex = Math.min(Math.floor(Math.log(bytesPerSecond) / Math.log(1024)), SIZE_UNITS.length - 1);
   const scaled = bytesPerSecond / (1024 ** unitIndex);
-  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 1;
+  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
   const shortUnit = SIZE_UNITS[unitIndex].replace('KB', 'K').replace('MB', 'M').replace('GB', 'G').replace('TB', 'T');
   return `${scaled.toFixed(digits)}${shortUnit}`;
+}
+
+function getAdaptiveNetAxisWidth(history: Array<{ netIn?: number | null; netOut?: number | null }>): number {
+  const maxRate = history.reduce((max, point) => {
+    const inRate = Number(point.netIn || 0);
+    const outRate = Number(point.netOut || 0);
+    return Math.max(max, inRate, outRate);
+  }, 0);
+
+  if (maxRate <= 0) return 30;
+
+  // Sample several representative ticks to estimate the longest tick label.
+  const samples = [maxRate, maxRate * 0.75, maxRate * 0.5, maxRate * 0.25]
+    .map((value) => formatAxisRate(value));
+  const maxLen = samples.reduce((len, label) => Math.max(len, label.length), 0);
+
+  // Keep minimal blank space in normal ranges, expand only when values grow.
+  const estimatedWidth = Math.ceil(maxLen * 6.1 + 10);
+  return Math.min(68, Math.max(30, estimatedWidth));
 }
 
 interface ChartTooltipPayload {
@@ -384,6 +403,7 @@ export default function DashboardOverview() {
   const accumulatedTraffic = stats?.netBytes
     ? `↓ ${formatBytes(Number(stats.netBytes.in || 0))} · ↑ ${formatBytes(Number(stats.netBytes.out || 0))}`
     : 'N/A';
+  const netAxisWidth = getAdaptiveNetAxisWidth(history);
 
   return (
     <div className="grid animate-fade-in dashboard-page" style={{ gap: '1rem' }}>
@@ -595,7 +615,7 @@ export default function DashboardOverview() {
           </div>
           <div style={{ width: '100%', height: '120px', marginTop: 'auto' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 8, left: 30, bottom: 0 }}>
+              <AreaChart data={history} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorNetIn" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
@@ -614,8 +634,8 @@ export default function DashboardOverview() {
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  width={92}
-                  tickMargin={10}
+                  width={netAxisWidth}
+                  tickMargin={4}
                   tick={{ textAnchor: 'end' }}
                   tickFormatter={(value) => formatAxisRate(Number(value))}
                 />

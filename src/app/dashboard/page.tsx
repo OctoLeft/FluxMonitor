@@ -10,6 +10,21 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { streamAiContent } from '@/lib/aiStream';
 
+const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+function formatBytes(value: number, fixed = 1): string {
+  if (!Number.isFinite(value) || value < 0) return '0 B';
+  if (value === 0) return '0 B';
+  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), SIZE_UNITS.length - 1);
+  const scaled = value / (1024 ** unitIndex);
+  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : fixed;
+  return `${scaled.toFixed(digits)} ${SIZE_UNITS[unitIndex]}`;
+}
+
+function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
 
 export default function DashboardOverview() {
     // AI Analysis states
@@ -29,7 +44,7 @@ export default function DashboardOverview() {
         lines.push(`- Memory: ${stats.memory?.usedMB ?? 'N/A'}MB / ${stats.memory?.totalMB ?? 'N/A'}MB`);
         lines.push(`- Swap: ${stats.swap ?? 'N/A'}`);
         lines.push(`- Disk: ${stats.disk?.used ?? 'N/A'} / ${stats.disk?.total ?? 'N/A'}`);
-        lines.push(`- Network: ${stats.network ?? 'N/A'}`);
+        lines.push(`- Network: down ${formatBytes(stats.netBytes?.in ?? 0)}, up ${formatBytes(stats.netBytes?.out ?? 0)}`);
         lines.push(`- MemPressure: ${stats.memPressure ?? 'N/A'}`);
         lines.push(`- Battery: ${stats.battery ?? 'N/A'}`);
         lines.push(`- OS: ${stats.osVersion ?? 'N/A'}, Kernel: ${stats.kernel ?? 'N/A'}, Arch: ${stats.arch ?? 'N/A'}`);
@@ -158,9 +173,9 @@ export default function DashboardOverview() {
 
           const currentNetBytes = dataStats.data.netBytes;
           if (currentPrevNet && currentNetBytes && currentNetBytes.in > 0 && currentNetBytes.out > 0) {
-            // We use 5s interval now, so divide by 5
-            netInSpeed = Math.max(0, (currentNetBytes.in - currentPrevNet.in) / 1024 / 5);
-            netOutSpeed = Math.max(0, (currentNetBytes.out - currentPrevNet.out) / 1024 / 5);
+            // 5s sampling window -> bytes per second
+            netInSpeed = Math.max(0, (currentNetBytes.in - currentPrevNet.in) / 5);
+            netOutSpeed = Math.max(0, (currentNetBytes.out - currentPrevNet.out) / 5);
           }
 
           setHistory(prev => {
@@ -168,8 +183,8 @@ export default function DashboardOverview() {
               time: timeStr,
               cpu: Number(cpuUsage.toFixed(1)),
               memory: Number(memPercent.toFixed(1)),
-              netIn: Number(netInSpeed.toFixed(1)),
-              netOut: Number(netOutSpeed.toFixed(1))
+              netIn: Number(netInSpeed.toFixed(0)),
+              netOut: Number(netOutSpeed.toFixed(0))
             };
             const newHistory = [...prev, newPoint];
             if (newHistory.length > 24) newHistory.shift();
@@ -293,6 +308,12 @@ export default function DashboardOverview() {
   }, [settingsConfig?.features]);
 
   if (loading && !stats) return <div className="flex-center" style={{ height: '70vh' }}>{t.common.loading}</div>;
+
+  const latestNetIn = history.length > 0 ? Number(history[history.length - 1].netIn || 0) : 0;
+  const latestNetOut = history.length > 0 ? Number(history[history.length - 1].netOut || 0) : 0;
+  const accumulatedTraffic = stats?.netBytes
+    ? `↓ ${formatBytes(Number(stats.netBytes.in || 0))} · ↑ ${formatBytes(Number(stats.netBytes.out || 0))}`
+    : 'N/A';
 
   return (
     <div className="grid animate-fade-in dashboard-page" style={{ gap: '1rem' }}>
@@ -486,12 +507,12 @@ export default function DashboardOverview() {
         <div className="card glass-panel chart-card" style={{ padding: '1rem', minHeight: '200px', display: 'flex', flexDirection: 'column' }}>
           <div style={{ marginBottom: '0.5rem', width: '100%' }}>
             <h3 style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>{t.monitor.networkChart}</h3>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <span style={{ color: '#10b981' }}>↓ {history.length > 0 ? history[history.length - 1].netIn : '0'}</span>
-              <span style={{ color: '#8b5cf6' }}>↑ {history.length > 0 ? history[history.length - 1].netOut : '0'}</span>
+            <div style={{ fontSize: '1rem', fontWeight: 650, display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <span style={{ color: '#10b981' }}>↓ {formatRate(latestNetIn)}</span>
+              <span style={{ color: '#8b5cf6' }}>↑ {formatRate(latestNetOut)}</span>
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.1rem' }}>
-              {stats?.network?.split(',').slice(0, 2).join(',') || 'N/A'} ({t.monitor.accumulated})
+              {accumulatedTraffic} ({t.monitor.accumulated})
             </div>
           </div>
           <div style={{ width: '100%', height: '120px', marginTop: 'auto' }}>
@@ -509,8 +530,18 @@ export default function DashboardOverview() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-surface-border)" />
                 <XAxis dataKey="time" hide />
-                <YAxis domain={['auto', 'auto']} stroke="var(--color-text-muted)" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ background: 'rgba(255,255,255,0.9)' }} />
+                <YAxis
+                  domain={['auto', 'auto']}
+                  stroke="var(--color-text-muted)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => formatBytes(Number(value))}
+                />
+                <Tooltip
+                  contentStyle={{ background: 'rgba(255,255,255,0.9)' }}
+                  formatter={(value, name) => [formatRate(Number(value ?? 0)), String(name)]}
+                />
                 <Area type="monotone" dataKey="netIn" name={t.monitor.down} stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorNetIn)" isAnimationActive={false} />
                 <Area type="monotone" dataKey="netOut" name={t.monitor.up} stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorNetOut)" isAnimationActive={false} />
               </AreaChart>
@@ -533,7 +564,10 @@ export default function DashboardOverview() {
               <StatRow label={t.monitor.arch} value={stats?.arch} />
               <StatRow label={t.monitor.memPressure} value={stats?.memPressure} />
               <StatRow label={t.monitor.osVersion} value={stats?.osVersion} />
-              <StatRow label={t.monitor.network} value={stats?.network?.split(',')[0]?.replace('in', '↓')} />
+              <StatRow
+                label={t.monitor.network}
+                value={stats?.netBytes ? `↓ ${formatBytes(Number(stats.netBytes.in || 0))} / ↑ ${formatBytes(Number(stats.netBytes.out || 0))}` : 'N/A'}
+              />
               <StatRow label={t.monitor.battery} value={stats?.battery} color="#10b981" />
             </div>
           </div>
